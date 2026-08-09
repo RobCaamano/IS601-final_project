@@ -149,18 +149,25 @@ def view_calculation_page(request: Request, calc_id: str):
 def edit_calculation_page(request: Request, calc_id: str):
     """
     Page for editing a calculation (Update).
-    
+
     Part of the BREAD (Browse, Read, Edit, Add, Delete) pattern:
     - This is the Edit page
-    
+
     Args:
         request: The FastAPI request object (required by Jinja2)
         calc_id: UUID of the calculation to edit
-        
+
     Returns:
         HTMLResponse: Rendered template with calculation ID passed to frontend
     """
     return templates.TemplateResponse(request, "edit_calculation.html", {"calc_id": calc_id})
+
+@app.get("/account", response_class=HTMLResponse, tags=["web"])
+def account_page(request: Request):
+    """
+    Account settings page for updating username, email, and password.
+    """
+    return templates.TemplateResponse(request, "account.html")
 
 
 # ------------------------------------------------------------------------------
