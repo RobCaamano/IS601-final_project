@@ -6,3 +6,20 @@
 # No requirements.txt/Dockerfile change can patch a version vendored inside
 # pip's own release; revisit if a future pip release bundles a fixed copy.
 GHSA-6v7p-g79w-8964
+
+# CVE-2025-47273 (setuptools Path Traversal in PackageIndex), reported as
+# setuptools 70.3.0.
+# Verified false positive: the running image's actual installed setuptools
+# is 84.0.0 (`pip show setuptools` and
+# `python3 -c "import setuptools; print(setuptools.__version__)"` both
+# confirm this), and `find / -iname '*setuptools*70.3*'` across the full
+# built container filesystem returns nothing - 70.3.0 does not exist
+# anywhere in the image. Reproduced across multiple base image patch tags
+# (python:3.10-slim, 3.10.16/17/18/19-slim) with the same result each time:
+# a different real installed setuptools version in every case, never
+# 70.3.0. Our Dockerfile always upgrades setuptools to >=78.1.1 regardless
+# of the base image's starting version. Trivy appears to misattribute this
+# finding, likely by parsing a `setuptools>=70.3.0`-style minimum-version
+# build constraint from some other package's metadata as if it were an
+# installed version. Re-verify if the Trivy version changes.
+CVE-2025-47273
