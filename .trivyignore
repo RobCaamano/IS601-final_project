@@ -1,0 +1,8 @@
+# GHSA-6v7p-g79w-8964 (msgpack Unpacker out-of-bounds read/crash)
+# msgpack here is vendored inside pip itself (pip/_vendor/msgpack), pulled in
+# by `pip install --upgrade pip` in the Dockerfile. It is not a project
+# dependency - app/ never imports msgpack, and pip's vendored copy is only
+# used internally by pip's own resolver/cache, not reachable at runtime.
+# No requirements.txt/Dockerfile change can patch a version vendored inside
+# pip's own release; revisit if a future pip release bundles a fixed copy.
+GHSA-6v7p-g79w-8964
