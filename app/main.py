@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles  # For serving static files (CSS, JS)
 from fastapi.templating import Jinja2Templates  # For HTML templates
 
+from sqlalchemy import or_  # For duplicate username/email checks
 from sqlalchemy.orm import Session  # SQLAlchemy database session
 
 import uvicorn  # ASGI server for running FastAPI apps
@@ -37,7 +38,7 @@ from app.models.calculation import Calculation  # Database model for calculation
 from app.models.user import User  # Database model for users
 from app.schemas.calculation import CalculationBase, CalculationResponse, CalculationUpdate  # API request/response schemas
 from app.schemas.token import TokenResponse  # API token schema
-from app.schemas.user import UserCreate, UserResponse, UserLogin  # User schemas
+from app.schemas.user import PasswordUpdate, UserCreate, UserResponse, UserLogin, UserUpdate  # User schemas
 from app.database import Base, get_db, engine  # Database connection
 
 
@@ -254,6 +255,88 @@ def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
         "access_token": auth_result["access_token"],
         "token_type": "bearer"
     }
+
+
+# ------------------------------------------------------------------------------
+# User Update Endpoints
+# ------------------------------------------------------------------------------
+
+@app.put("/users/{user_id}", response_model=UserResponse, tags=["update"])
+def update_user(
+    user_id: str,
+    user_update: UserUpdate,
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update a user's username and/or email. Users may only update their own account.
+    """
+    # Convert str->UUID to compare against current_user.id and to query db
+    try:
+        target_id = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id format.")
+
+    # Auth check
+    if target_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot update another user's account.")
+
+    # Fetch db row to update
+    user = db.query(User).filter(User.id == target_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    # Pull username/email off the payload
+    update_data = user_update.dict(exclude_unset=True, include={"username", "email"})  # exclude_unset keeps a partial update (just one field) from affecting other fields
+    if not update_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update.")
+
+    # Enforce uniqueness manually before writing, excluding this user's own row.
+    conflict_filters = [getattr(User, field) == value for field, value in update_data.items()]
+    existing_user = db.query(User).filter(User.id != user.id, or_(*conflict_filters)).first()
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already exists")
+
+    # Perform db update and commit
+    user.update(**update_data)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.put("/users/{user_id}/password", response_model=UserResponse, tags=["update"])
+def update_user_password(
+    user_id: str,
+    pw_update: PasswordUpdate,
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update a user's password. Users may only update their own password.
+    """
+    # Convert str->UUID to compare against current_user.id and to query db
+    try:
+        target_id = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id format.")
+
+    # Auth check
+    if target_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot update another user's account.")
+
+    # Fetch db row to update
+    user = db.query(User).filter(User.id == target_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    # Require proof of the existing password before allowing a change
+    if not user.verify_password(pw_update.current_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect.")
+
+    # Hashing + db update and commit
+    user.update(password=User.hash_password(pw_update.new_password))
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 # ------------------------------------------------------------------------------
