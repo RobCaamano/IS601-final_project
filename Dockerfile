@@ -12,8 +12,12 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc python3-dev libssl-dev curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and essential Python tools
-RUN python -m pip install --upgrade pip setuptools>=78.1.1 wheel
+# Upgrade pip and essential Python tools. Also strip ensurepip's bundled
+# setuptools/pip wheels: they ship an old pinned setuptools (CVE-2025-47273)
+# baked into the base image, are never installed/imported, and are only
+# used for offline pip bootstrapping we don't need once pip is upgraded above.
+RUN python -m pip install --upgrade pip setuptools>=78.1.1 wheel && \
+    rm -rf /usr/local/lib/python3.10/ensurepip/_bundled
 
 # Create non-root user
 RUN groupadd -r appgroup && \
